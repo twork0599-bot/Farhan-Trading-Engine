@@ -21,6 +21,7 @@ public class CaptureOverlayService extends Service {
     public static final String EXTRA_RESULT="resultCode";
     public static final String EXTRA_DATA="projectionData";
     private static final String CHANNEL="farhan_capture";
+    private static final long SIGNAL_WINDOW_MS=4000L;
     private MediaProjection projection;
     private VirtualDisplay display;
     private ImageReader reader;
@@ -28,17 +29,28 @@ public class CaptureOverlayService extends Service {
     private TextView chip;
     private Handler handler;
     private long lastFrameAt=0;
-    private long lastAttemptMinute=-1;
-    private static final long SIGNAL_WINDOW_MS=4000L;
+    private long committedMinute=-1;
+    private String latestDirection="WAIT";
+    private String latestReason="Collecting chart data...";
+    private int latestUpVotes=0,latestDownVotes=0;
+    private boolean hasFreshAnalysis=false;
+
     private final Runnable refresh=new Runnable(){ public void run(){
         if(chip!=null){
-            long now=System.currentTimeMillis(); // Unix epoch uses UTC minute boundaries
-            long currentMinute=now/60000L;
-            long lockedMinute=getSharedPreferences("engine",MODE_PRIVATE).getLong("auto_signal_minute",-1L);
-            String d=getSharedPreferences("engine",MODE_PRIVATE).getString("auto_direction","WAIT");
-            String detail=getSharedPreferences("engine",MODE_PRIVATE).getString("auto_frame_status","Waiting for next UTC minute signal");
-            if(lockedMinute!=currentMinute) d="WAIT";
+            long now=System.currentTimeMillis();
+            long minute=now/60000L;
             long msToBoundary=60000L-(now%60000L);
+            long targetMinute=minute;
+            String d="WAIT";
+            String detail="Analyzing current candle...";
+            long savedMinute=getSharedPreferences("engine",MODE_PRIVATE).getLong("auto_signal_minute",-1L);
+            String savedDirection=getSharedPreferences("engine",MODE_PRIVATE).getString("auto_direction","WAIT");
+            String savedReason=getSharedPreferences("engine",MODE_PRIVATE).getString("auto_frame_status","Waiting for chart analysis");
+            // Show the next-candle call immediately in the final four seconds,
+            // then keep that exact call throughout the target candle.
+            if(savedMinute==minute || (savedMinute==minute+1L && msToBoundary<=SIGNAL_WINDOW_MS)){
+                targetMinute=savedMinute; d=savedDirection; detail=savedReason;
+            }
             long secondsLeft=(msToBoundary+999L)/1000L;
             String headline="BUY".equals(d)?"BUY ↑":"SELL".equals(d)?"SELL ↓":"WAIT";
             chip.setText(headline+"  •  "+secondsLeft+"s\n"+detail);
@@ -46,18 +58,19 @@ public class CaptureOverlayService extends Service {
         }
         if(handler!=null)handler.postDelayed(this,250);
     }};
+
     @Override public void onCreate(){super.onCreate();handler=new Handler(Looper.getMainLooper());}
     @Override public int onStartCommand(Intent intent,int flags,int startId){
         if(intent==null)return START_NOT_STICKY;
         if(ACTION_STOP.equals(intent.getAction())){stopSelf();return START_NOT_STICKY;}
         createChannel();
-        startForeground(7,new Notification.Builder(this,CHANNEL).setContentTitle("Farhan Trading Engine").setContentText("On-device chart scan • signal-only").setSmallIcon(android.R.drawable.ic_menu_view).build());
+        startForeground(7,new Notification.Builder(this,CHANNEL).setContentTitle("Farhan Trading Engine").setContentText("Continuous chart analysis • signal-only").setSmallIcon(android.R.drawable.ic_menu_view).build());
         if(!Settings.canDrawOverlays(this)){stopSelf();return START_NOT_STICKY;}
         showOverlay();
         int code=intent.getIntExtra(EXTRA_RESULT,Activity.RESULT_CANCELED);
         Intent data=intent.getParcelableExtra(EXTRA_DATA);
         if(code==Activity.RESULT_OK && data!=null)startCapture(code,data);
-        handler.post(refresh);
+        handler.removeCallbacks(refresh); handler.post(refresh);
         return START_NOT_STICKY;
     }
     private void createChannel(){
@@ -66,7 +79,7 @@ public class CaptureOverlayService extends Service {
     private void showOverlay(){
         if(chip!=null)return;
         windowManager=(WindowManager)getSystemService(WINDOW_SERVICE);
-        chip=new TextView(this);chip.setText("WAIT • 60s\nScanning chart");chip.setTextColor(Color.YELLOW);chip.setTextSize(12);chip.setGravity(Gravity.CENTER);chip.setPadding(18,12,18,12);chip.setBackgroundColor(Color.rgb(20,30,48));
+        chip=new TextView(this);chip.setText("WAIT • Analyzing chart");chip.setTextColor(Color.YELLOW);chip.setTextSize(13);chip.setGravity(Gravity.CENTER);chip.setPadding(18,12,18,12);chip.setBackgroundColor(Color.rgb(20,30,48));
         int type=Build.VERSION.SDK_INT>=26?WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY:WindowManager.LayoutParams.TYPE_PHONE;
         WindowManager.LayoutParams p=new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.WRAP_CONTENT,type,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,PixelFormat.TRANSLUCENT);
         p.gravity=Gravity.TOP|Gravity.END;p.x=12;p.y=160;
@@ -84,20 +97,19 @@ public class CaptureOverlayService extends Service {
             display=projection.createVirtualDisplay("FarhanTradingCapture",w,h,d,DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,reader.getSurface(),null,handler);
         }catch(Exception e){setStatus("Capture error: "+e.getClass().getSimpleName());stopSelf();}
     }
+
     private void processLatestFrame(ImageReader source){
         Image image=null; Bitmap padded=null,frame=null;
         try{
             image=source.acquireLatestImage();
             if(image==null)return;
             long now=System.currentTimeMillis();
-            if(now-lastFrameAt<700)return;
+            if(now-lastFrameAt<1200L)return;
             lastFrameAt=now;
             long currentMinute=now/60000L;
             long msToBoundary=60000L-(now%60000L);
-            // Create exactly one decision in the final 4 seconds before each UTC minute.
-            if(msToBoundary>SIGNAL_WINDOW_MS || lastAttemptMinute==currentMinute)return;
-            lastAttemptMinute=currentMinute;
 
+            // Analyze repeatedly through the whole live candle, not only at its end.
             Image.Plane plane=image.getPlanes()[0];
             int w=image.getWidth(),h=image.getHeight(),pixelStride=plane.getPixelStride(),rowStride=plane.getRowStride();
             int paddedWidth=rowStride/pixelStride;
@@ -106,29 +118,35 @@ public class CaptureOverlayService extends Service {
             padded.copyPixelsFromBuffer(buffer);
             frame=Bitmap.createBitmap(padded,0,0,w,h);
             ChartFrameAnalyzer.FrameResult detected=ChartFrameAnalyzer.analyze(frame);
-            String direction="WAIT";
-            String reason=detected.message;
-            int up=0,down=0;
+
             if(detected.candles.size()>=6){
                 SignalEngine.Result result=SignalEngine.analyze(detected.candles);
-                direction="UP".equals(result.direction)?"BUY":"DOWN".equals(result.direction)?"SELL":"WAIT";
-                reason=result.reason+" • "+detected.candles.size()+" candles";
-                up=result.upVotes; down=result.downVotes;
+                latestDirection="UP".equals(result.direction)?"BUY":"DOWN".equals(result.direction)?"SELL":"WAIT";
+                latestReason=result.reason+" • "+detected.candles.size()+" candles";
+                latestUpVotes=result.upVotes; latestDownVotes=result.downVotes;
+                hasFreshAnalysis=true;
+            }else{
+                latestDirection="WAIT";
+                latestReason=detected.message;
+                latestUpVotes=0; latestDownVotes=0;
+                hasFreshAnalysis=false;
             }
-            // Lock this decision to the NEXT UTC minute. It cannot flip during that candle.
-            getSharedPreferences("engine",MODE_PRIVATE).edit()
-                .putString("auto_direction",direction)
-                .putLong("auto_signal_minute",currentMinute+1L)
-                .putString("auto_frame_status","Next UTC minute • "+reason)
-                .putInt("up_votes",up).putInt("down_votes",down).apply();
-        }catch(Exception e){
-            long now=System.currentTimeMillis(),minute=now/60000L;
-            if(lastAttemptMinute==minute){
+
+            // Publish only at T-minus 4 seconds, based on analysis accumulated during this candle.
+            if(msToBoundary<=SIGNAL_WINDOW_MS && committedMinute!=currentMinute){
+                committedMinute=currentMinute;
+                String finalDirection=hasFreshAnalysis?latestDirection:"WAIT";
+                String finalReason=hasFreshAnalysis?latestReason:"No valid chart analysis before candle close • "+latestReason;
                 getSharedPreferences("engine",MODE_PRIVATE).edit()
-                    .putString("auto_direction","WAIT")
-                    .putLong("auto_signal_minute",minute+1L)
-                    .putString("auto_frame_status","Scan unavailable • WAIT for next candle").apply();
+                    .putString("auto_direction",finalDirection)
+                    .putLong("auto_signal_minute",currentMinute+1L)
+                    .putString("auto_frame_status","Next candle • "+finalReason)
+                    .putInt("up_votes",latestUpVotes).putInt("down_votes",latestDownVotes)
+                    .apply();
             }
+        }catch(Exception e){
+            // A frame error must not overwrite a previously published signal.
+            if(committedMinute<0)setStatus("Chart scan error • "+e.getClass().getSimpleName());
         }finally{
             if(frame!=null && frame!=padded)frame.recycle();
             if(padded!=null)padded.recycle();
