@@ -82,8 +82,8 @@ public final class ChartFrameAnalyzer {
             if(hi<=lo || open<lo || open>hi || close<lo || close>hi) continue;
             out.add(new SignalEngine.Candle(open,hi,lo,close));
         }
-        if(out.size()<8)
-            return new FrameResult(out,"Only "+out.size()+" candles detected; need at least 8 clear candles.");
+        if(out.size()<6)
+            return new FrameResult(out,"Only "+out.size()+" candles detected; need at least 6 clear candles.");
         // A phone screen may include non-chart colored UI; retain the most recent 80 groups.
         if(out.size()>80)out=new ArrayList<>(out.subList(out.size()-80,out.size()));
         return new FrameResult(out,"Detected "+out.size()+" candle groups (pixel-derived estimates)");
