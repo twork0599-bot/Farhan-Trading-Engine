@@ -92,7 +92,7 @@ public class CaptureOverlayService extends Service {
             padded.copyPixelsFromBuffer(buffer);
             frame=Bitmap.createBitmap(padded,0,0,w,h);
             ChartFrameAnalyzer.FrameResult detected=ChartFrameAnalyzer.analyze(frame);
-            if(detected.candles.size()<8){
+            if(detected.candles.size()<6){
                 getSharedPreferences("engine",MODE_PRIVATE).edit().putString("direction","WAIT").putString("frame_status",detected.message).apply();
                 return;
             }
