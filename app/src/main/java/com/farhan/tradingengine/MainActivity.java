@@ -24,10 +24,10 @@ public class MainActivity extends Activity {
         root.addView(label("FARHAN TRADING ENGINE",22,Color.WHITE));
         signal=label("WAIT",40,Color.YELLOW);root.addView(signal);
         root.addView(label("AUTO STRATEGY MODE • BINOLLA • 1 MIN",12,Color.LTGRAY));
-        root.addView(label("AUTO SCAN: Start screen capture, then open Binolla 1-minute chart. The app scans visible green/red candle pixels on-device. If the chart is unclear or fewer than 35 candles are found, it shows WAIT. Manual OHLC entry is also available for testing.",13,Color.LTGRAY));
+        root.addView(label("AUTO SCAN: Start screen capture, then open Binolla 1-minute chart. The app scans visible green/red candle pixels on-device. If the chart is unclear or fewer than 6 candles are found, it shows WAIT. Manual OHLC entry is also available for testing.",13,Color.LTGRAY));
         candles=new EditText(this);candles.setHint("open,high,low,close\n1.0820,1.0830,1.0810,1.0825");candles.setTextColor(Color.WHITE);candles.setHintTextColor(Color.GRAY);candles.setGravity(Gravity.TOP|Gravity.START);candles.setMinLines(8);candles.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);candles.setPadding(12,12,12,12);candles.setBackgroundColor(Color.rgb(28,38,55));root.addView(candles);
         root.addView(button("ANALYZE CANDLES",this::runAnalysis));
-        details=label("Six rule groups: EMA trend, MACD momentum, RSI, Bollinger bands, candle strength and 20-candle breakout. Automatic screen scan uses pixel-estimated candles; results need user testing.",13,Color.LTGRAY);root.addView(details);
+        details=label("Analysis: short EMA trend, MACD-style momentum, RSI, volatility bands, breakout, support/resistance zones, short trendlines and candle patterns (engulfing, hammer, shooting star). Needs 6 visible candles; chart prices are pixel estimates and must be tested.",13,Color.LTGRAY);root.addView(details);
         root.addView(button("1. ALLOW FLOATING WINDOW",()->{Intent i=new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName()));startActivity(i);}));
         root.addView(button("2. START BINOLLA SCREEN CAPTURE + FLOATING PANEL",this::requestCapture));
         root.addView(button("STOP FLOATING PANEL",()->stopService(new Intent(this,CaptureOverlayService.class).setAction(CaptureOverlayService.ACTION_STOP))));
@@ -51,7 +51,7 @@ public class MainActivity extends Activity {
         try{
             List<SignalEngine.Candle> data=SignalEngine.parse(candles.getText().toString());SignalEngine.Result r=SignalEngine.analyze(data);
             signal.setText(r.direction);signal.setTextColor("UP".equals(r.direction)?Color.rgb(50,220,130):"DOWN".equals(r.direction)?Color.rgb(255,85,85):Color.YELLOW);
-            details.setText(r.reason+"\nRSI(14): "+String.format(Locale.US,"%.1f",r.rsi)+"\nEMA 9: "+r.emaFast+"\nEMA 20: "+r.emaSlow+"\nVotes UP/DOWN: "+r.upVotes+"/"+r.downVotes+"\nCandles: "+data.size());
+            details.setText(r.reason+"\nRSI (short lookback): "+String.format(Locale.US,"%.1f",r.rsi)+"\nFast EMA: "+r.emaFast+"\nSlow EMA: "+r.emaSlow+"\nVotes UP/DOWN: "+r.upVotes+"/"+r.downVotes+"\nCandles: "+data.size());
             getSharedPreferences("engine",MODE_PRIVATE).edit().putString("direction",r.direction).apply();
             status.setText("Analysis complete • floating panel refreshes the latest saved signal and 1-minute countdown.");
         }catch(Exception e){signal.setText("WAIT");signal.setTextColor(Color.YELLOW);details.setText(e.getMessage());getSharedPreferences("engine",MODE_PRIVATE).edit().putString("direction","WAIT").apply();status.setText("Need valid candle data");}
