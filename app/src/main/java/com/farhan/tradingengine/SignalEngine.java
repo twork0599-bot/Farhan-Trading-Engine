@@ -42,19 +42,20 @@ public final class SignalEngine {
         return 100-(100/(1+(gain/period)/(loss/period)));
     }
     public static Result analyze(List<Candle> a){
-        if(a.size()<35) throw new IllegalArgumentException("At least 35 candles are needed. Add older candles first, oldest to newest.");
+        if(a.size()<8) throw new IllegalArgumentException("At least 8 visible candles are needed.");
         int n=a.size(),up=0,down=0;
-        double e9=ema(a,9),e20=ema(a,20),e50=ema(a, Math.min(50,n));
-        double rs=rsi(a,14);
+        int fastPeriod=Math.min(3,n-1), slowPeriod=Math.min(6,n);
+        double e9=ema(a,fastPeriod),e20=ema(a,slowPeriod),e50=ema(a,Math.min(9,n));
+        double rs=rsi(a,Math.min(7,n-1));
         // MACD 12/26 with signal line from historical prefixes.
-        double macdNow=ema(a,12)-ema(a,26);
+        double macdNow=ema(a,Math.min(4,n-1))-ema(a,Math.min(8,n));
         List<Candle> prev=new ArrayList<>(a.subList(0,n-1));
-        double macdPrev=ema(prev,12)-ema(prev,26);
+        double macdPrev=ema(prev,Math.min(4,prev.size()))-ema(prev,Math.min(8,prev.size()));
         if(e9>e20 && e20>e50)up++; else if(e9<e20 && e20<e50)down++;
         if(macdNow>macdPrev && macdNow>0)up++; else if(macdNow<macdPrev && macdNow<0)down++;
         if(rs>52 && rs<70)up++; else if(rs<48 && rs>30)down++;
-        double mean=0;for(Candle c:a.subList(n-20,n))mean+=c.close;mean/=20;
-        double variance=0;for(Candle c:a.subList(n-20,n))variance+=Math.pow(c.close-mean,2);double sd=Math.sqrt(variance/20);
+        double mean=0;for(Candle c:a.subList(Math.max(0,n-8),n))mean+=c.close;mean/=Math.min(8,n);
+        double variance=0;for(Candle c:a.subList(n-20,n))variance+=Math.pow(c.close-mean,2);double sd=Math.sqrt(variance/Math.min(8,n));
         Candle last=a.get(n-1),prior=a.get(n-2);
         if(last.close>mean+2*sd && last.close>prior.close)up++;
         else if(last.close<mean-2*sd && last.close<prior.close)down++;
@@ -64,7 +65,7 @@ public final class SignalEngine {
         else if(range>0 && body<0 && last.close<=last.low+range*0.3)down++;
         // 20-candle breakout confirmation.
         double hh=Double.NEGATIVE_INFINITY,ll=Double.POSITIVE_INFINITY;
-        for(Candle c:a.subList(n-21,n-1)){hh=Math.max(hh,c.high);ll=Math.min(ll,c.low);}
+        for(Candle c:a.subList(Math.max(0,n-8),n-1)){hh=Math.max(hh,c.high);ll=Math.min(ll,c.low);}
         if(last.close>hh)up++; else if(last.close<ll)down++;
         String dir="WAIT",why="Mixed or weak confirmation. Wait for a clearer setup.";
         if(up>=4 && up-down>=3){dir="UP";why="Bullish confluence: "+up+" strategy votes; bearish votes: "+down+".";}
