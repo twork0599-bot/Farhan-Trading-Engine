@@ -109,4 +109,4 @@ public final class SignalEngine {
         else {why="No strong agreement (UP "+up+"/9, DOWN "+down+"/9). WAIT is safer.";}
         return new Result(dir,why,up,down,rs,fast,slow);
     }
-}\n}\n
+}
