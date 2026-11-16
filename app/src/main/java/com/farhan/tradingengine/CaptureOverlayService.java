@@ -41,7 +41,7 @@ public class CaptureOverlayService extends Service {
             long msToBoundary=60000L-(now%60000L);
             long secondsLeft=(msToBoundary+999L)/1000L;
             String headline="BUY".equals(d)?"BUY ↑":"SELL".equals(d)?"SELL ↓":"WAIT";
-            chip.setText(headline+"  •  "+secondsLeft+"s\\n"+detail);
+            chip.setText(headline+"  •  "+secondsLeft+"s\n"+detail);
             chip.setTextColor("BUY".equals(d)?Color.rgb(80,255,150):"SELL".equals(d)?Color.rgb(255,100,100):Color.YELLOW);
         }
         if(handler!=null)handler.postDelayed(this,250);
