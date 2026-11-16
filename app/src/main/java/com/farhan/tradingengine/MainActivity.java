@@ -14,14 +14,14 @@ import java.util.*;
 
 public class MainActivity extends Activity {
     private static final int CAPTURE_REQUEST=701;
-    private TextView status,signal,details;
+    private TextView status,signal,details;\n    private int dp(float v){return (int)(v*getResources().getDisplayMetrics().density+0.5f);}
     private EditText candles;
     @Override protected void onCreate(Bundle b){super.onCreate(b);buildScreen();}
     private TextView label(String value,int size,int color){TextView t=new TextView(this);t.setText(value);t.setTextSize(size);t.setTextColor(color);t.setGravity(Gravity.CENTER);t.setPadding(4,12,4,12);return t;}
     private Button button(String title,Runnable action){Button b=new Button(this);b.setText(title);b.setOnClickListener(v->action.run());return b;}
     private void buildScreen(){
         ScrollView scroll=new ScrollView(this);LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(20,24,20,24);root.setBackgroundColor(Color.rgb(12,18,30));scroll.addView(root);
-        root.addView(label("FARHAN TRADING ENGINE",22,Color.WHITE));
+        root.addView(new TradingHeroView(this),new LinearLayout.LayoutParams(-1,dp(235)));\n        root.addView(label("FARHAN TRADING ENGINE",20,Color.WHITE));
         signal=label("WAIT",40,Color.YELLOW);root.addView(signal);
         root.addView(label("AUTO STRATEGY MODE • BINOLLA • 1 MIN",12,Color.LTGRAY));
         root.addView(label("AUTO SCAN: Start screen capture, then open Binolla 1-minute chart. The app scans visible green/red candle pixels on-device. If the chart is unclear or fewer than 6 candles are found, it shows WAIT. Manual OHLC entry is also available for testing.",13,Color.LTGRAY));
