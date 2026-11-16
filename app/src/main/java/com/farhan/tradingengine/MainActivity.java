@@ -24,10 +24,10 @@ public class MainActivity extends Activity {
         root.addView(label("FARHAN TRADING ENGINE",22,Color.WHITE));
         signal=label("WAIT",40,Color.YELLOW);root.addView(signal);
         root.addView(label("AUTO STRATEGY MODE • BINOLLA • 1 MIN",12,Color.LTGRAY));
-        root.addView(label("Enter at least 35 candles, oldest first. Format: open,high,low,close. Automatic chart-to-OHLC recognition is not enabled; screen capture only confirms Android permission and keeps the floating panel active.",13,Color.LTGRAY));
+        root.addView(label("AUTO SCAN: Start screen capture, then open Binolla 1-minute chart. The app scans visible green/red candle pixels on-device. If the chart is unclear or fewer than 35 candles are found, it shows WAIT. Manual OHLC entry is also available for testing.",13,Color.LTGRAY));
         candles=new EditText(this);candles.setHint("open,high,low,close\n1.0820,1.0830,1.0810,1.0825");candles.setTextColor(Color.WHITE);candles.setHintTextColor(Color.GRAY);candles.setGravity(Gravity.TOP|Gravity.START);candles.setMinLines(8);candles.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);candles.setPadding(12,12,12,12);candles.setBackgroundColor(Color.rgb(28,38,55));root.addView(candles);
         root.addView(button("ANALYZE CANDLES",this::runAnalysis));
-        details=label("Six rule groups: EMA trend, MACD momentum, RSI, Bollinger bands, candle strength and 20-candle breakout.",13,Color.LTGRAY);root.addView(details);
+        details=label("Six rule groups: EMA trend, MACD momentum, RSI, Bollinger bands, candle strength and 20-candle breakout. Automatic screen scan uses pixel-estimated candles; results need user testing.",13,Color.LTGRAY);root.addView(details);
         root.addView(button("1. ALLOW FLOATING WINDOW",()->{Intent i=new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName()));startActivity(i);}));
         root.addView(button("2. START BINOLLA SCREEN CAPTURE + FLOATING PANEL",this::requestCapture));
         root.addView(button("STOP FLOATING PANEL",()->stopService(new Intent(this,CaptureOverlayService.class).setAction(CaptureOverlayService.ACTION_STOP))));
@@ -44,7 +44,7 @@ public class MainActivity extends Activity {
         if(request==CAPTURE_REQUEST&&result==RESULT_OK&&data!=null){
             Intent s=new Intent(this,CaptureOverlayService.class);s.setAction(CaptureOverlayService.ACTION_START);s.putExtra(CaptureOverlayService.EXTRA_RESULT,result);s.putExtra(CaptureOverlayService.EXTRA_DATA,data);
             if(android.os.Build.VERSION.SDK_INT>=26)startForegroundService(s);else startService(s);
-            status.setText("Screen capture session started. Chart candles are not yet extracted automatically.");
+            status.setText("Screen capture started. Open Binolla and keep its 1-minute chart visible; on-device scan is active.");
         }else if(request==CAPTURE_REQUEST)status.setText("Screen capture permission was not granted.");
     }
     private void runAnalysis(){
