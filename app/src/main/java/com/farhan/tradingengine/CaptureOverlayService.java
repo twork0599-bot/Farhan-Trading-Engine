@@ -77,13 +77,13 @@ public class CaptureOverlayService extends Service {
         }catch(Exception e){setStatus("Capture error: "+e.getClass().getSimpleName());stopSelf();}
     }
     private void processLatestFrame(ImageReader source){
-        long now=System.currentTimeMillis();
-        if(now-lastFrameAt<1400)return;
-        lastFrameAt=now;
         Image image=null; Bitmap padded=null,frame=null;
         try{
             image=source.acquireLatestImage();
             if(image==null)return;
+            long now=System.currentTimeMillis();
+            if(now-lastFrameAt<1400)return;
+            lastFrameAt=now;
             Image.Plane plane=image.getPlanes()[0];
             int w=image.getWidth(),h=image.getHeight(),pixelStride=plane.getPixelStride(),rowStride=plane.getRowStride();
             int paddedWidth=rowStride/pixelStride;
