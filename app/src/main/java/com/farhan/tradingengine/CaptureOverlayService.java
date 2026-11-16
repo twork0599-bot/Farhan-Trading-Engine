@@ -28,15 +28,23 @@ public class CaptureOverlayService extends Service {
     private TextView chip;
     private Handler handler;
     private long lastFrameAt=0;
+    private long lastAttemptMinute=-1;
+    private static final long SIGNAL_WINDOW_MS=4000L;
     private final Runnable refresh=new Runnable(){ public void run(){
         if(chip!=null){
-            String d=getSharedPreferences("engine",MODE_PRIVATE).getString("direction","WAIT");
-            String detail=getSharedPreferences("engine",MODE_PRIVATE).getString("frame_status","Waiting for chart frame");
-            long until=60-(System.currentTimeMillis()/1000)%60;
-            chip.setText(d+"  •  "+until+"s\n"+detail);
-            chip.setTextColor("UP".equals(d)?Color.rgb(80,255,150):"DOWN".equals(d)?Color.rgb(255,100,100):Color.YELLOW);
+            long now=System.currentTimeMillis(); // Unix epoch uses UTC minute boundaries
+            long currentMinute=now/60000L;
+            long lockedMinute=getSharedPreferences("engine",MODE_PRIVATE).getLong("auto_signal_minute",-1L);
+            String d=getSharedPreferences("engine",MODE_PRIVATE).getString("auto_direction","WAIT");
+            String detail=getSharedPreferences("engine",MODE_PRIVATE).getString("auto_frame_status","Waiting for next UTC minute signal");
+            if(lockedMinute!=currentMinute) d="WAIT";
+            long msToBoundary=60000L-(now%60000L);
+            long secondsLeft=(msToBoundary+999L)/1000L;
+            String headline="BUY".equals(d)?"BUY ↑":"SELL".equals(d)?"SELL ↓":"WAIT";
+            chip.setText(headline+"  •  "+secondsLeft+"s\\n"+detail);
+            chip.setTextColor("BUY".equals(d)?Color.rgb(80,255,150):"SELL".equals(d)?Color.rgb(255,100,100):Color.YELLOW);
         }
-        if(handler!=null)handler.postDelayed(this,1000);
+        if(handler!=null)handler.postDelayed(this,250);
     }};
     @Override public void onCreate(){super.onCreate();handler=new Handler(Looper.getMainLooper());}
     @Override public int onStartCommand(Intent intent,int flags,int startId){
@@ -82,8 +90,14 @@ public class CaptureOverlayService extends Service {
             image=source.acquireLatestImage();
             if(image==null)return;
             long now=System.currentTimeMillis();
-            if(now-lastFrameAt<1400)return;
+            if(now-lastFrameAt<700)return;
             lastFrameAt=now;
+            long currentMinute=now/60000L;
+            long msToBoundary=60000L-(now%60000L);
+            // Create exactly one decision in the final 4 seconds before each UTC minute.
+            if(msToBoundary>SIGNAL_WINDOW_MS || lastAttemptMinute==currentMinute)return;
+            lastAttemptMinute=currentMinute;
+
             Image.Plane plane=image.getPlanes()[0];
             int w=image.getWidth(),h=image.getHeight(),pixelStride=plane.getPixelStride(),rowStride=plane.getRowStride();
             int paddedWidth=rowStride/pixelStride;
@@ -92,19 +106,29 @@ public class CaptureOverlayService extends Service {
             padded.copyPixelsFromBuffer(buffer);
             frame=Bitmap.createBitmap(padded,0,0,w,h);
             ChartFrameAnalyzer.FrameResult detected=ChartFrameAnalyzer.analyze(frame);
-            if(detected.candles.size()<6){
-                getSharedPreferences("engine",MODE_PRIVATE).edit().putString("direction","WAIT").putString("frame_status",detected.message).apply();
-                return;
+            String direction="WAIT";
+            String reason=detected.message;
+            int up=0,down=0;
+            if(detected.candles.size()>=6){
+                SignalEngine.Result result=SignalEngine.analyze(detected.candles);
+                direction="UP".equals(result.direction)?"BUY":"DOWN".equals(result.direction)?"SELL":"WAIT";
+                reason=result.reason+" • "+detected.candles.size()+" candles";
+                up=result.upVotes; down=result.downVotes;
             }
-            SignalEngine.Result result=SignalEngine.analyze(detected.candles);
-            String reason=result.reason+" • "+detected.candles.size()+" candles";
+            // Lock this decision to the NEXT UTC minute. It cannot flip during that candle.
             getSharedPreferences("engine",MODE_PRIVATE).edit()
-                .putString("direction",result.direction)
-                .putString("frame_status",reason)
-                .putInt("up_votes",result.upVotes).putInt("down_votes",result.downVotes)
-                .putFloat("rsi",(float)result.rsi).apply();
+                .putString("auto_direction",direction)
+                .putLong("auto_signal_minute",currentMinute+1L)
+                .putString("auto_frame_status","Next UTC minute • "+reason)
+                .putInt("up_votes",up).putInt("down_votes",down).apply();
         }catch(Exception e){
-            setStatus("Chart scan unavailable • WAIT");
+            long now=System.currentTimeMillis(),minute=now/60000L;
+            if(lastAttemptMinute==minute){
+                getSharedPreferences("engine",MODE_PRIVATE).edit()
+                    .putString("auto_direction","WAIT")
+                    .putLong("auto_signal_minute",minute+1L)
+                    .putString("auto_frame_status","Scan unavailable • WAIT for next candle").apply();
+            }
         }finally{
             if(frame!=null && frame!=padded)frame.recycle();
             if(padded!=null)padded.recycle();
@@ -112,7 +136,7 @@ public class CaptureOverlayService extends Service {
         }
     }
     private void setStatus(String message){
-        getSharedPreferences("engine",MODE_PRIVATE).edit().putString("direction","WAIT").putString("frame_status",message).apply();
+        getSharedPreferences("engine",MODE_PRIVATE).edit().putString("auto_direction","WAIT").putString("auto_frame_status",message).apply();
     }
     @Override public void onDestroy(){
         if(handler!=null)handler.removeCallbacksAndMessages(null);
