@@ -52,7 +52,7 @@ public class MainActivity extends Activity {
     private void runAnalysis(){
         try{
             List<SignalEngine.Candle> data=SignalEngine.parse(candles.getText().toString());SignalEngine.Result r=SignalEngine.analyze(data);
-            signal.setText(r.direction);signal.setTextColor("UP".equals(r.direction)?Color.rgb(50,220,130):"DOWN".equals(r.direction)?Color.rgb(255,85,85):Color.YELLOW);
+            String displayDirection="UP".equals(r.direction)?"BUY ↑":"DOWN".equals(r.direction)?"SELL ↓":"WAIT";signal.setText(displayDirection);signal.setTextColor("UP".equals(r.direction)?Color.rgb(50,220,130):"DOWN".equals(r.direction)?Color.rgb(255,85,85):Color.YELLOW);
             details.setText(r.reason+"\nRSI (short lookback): "+String.format(Locale.US,"%.1f",r.rsi)+"\nFast EMA: "+r.emaFast+"\nSlow EMA: "+r.emaSlow+"\nVotes UP/DOWN: "+r.upVotes+"/"+r.downVotes+"\nCandles: "+data.size());
             getSharedPreferences("engine",MODE_PRIVATE).edit().putString("direction",r.direction).apply();
             status.setText("Analysis complete • floating panel refreshes the latest saved signal and 1-minute countdown.");
